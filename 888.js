@@ -1,4 +1,3 @@
-// Main by Elixir & Axtral
 import dns from 'dns';
 dns.setDefaultResultOrder('ipv4first');
 
@@ -6,7 +5,6 @@ process.env.SUPPRESS_BANNER = 'true';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1';
 import './config.js';
-import persistentState from './lib/state.js';
 import { createRequire } from 'module';
 import path, { join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -29,7 +27,7 @@ import NodeCache from 'node-cache';
 
 const authFolder = global.authFile || '888BotSession';
 global.authFile = authFolder;
-global.authFileJB = global.authFileJB || '888bot-sub';
+global.authFileJB = global.authFileJB || '333bot-sub';
 global.rcanal = '120363341274693350@newsletter';
 const sessionFolder = path.join(process.cwd(), authFolder);
 const tempDir = join(process.cwd(), 'temp');
@@ -42,6 +40,7 @@ async function ensureDir(dir) {
   try {
     await fsp.mkdir(dir, { recursive: true });
   } catch (e) {
+    // ignore
   }
 }
 
@@ -136,15 +135,12 @@ async function clearSessionFolderSelective(dir = sessionFolder) {
         await fsp.unlink(fullPath);
       }
     } catch {
-
+      // ignore individual failures
     }
   }));
 }
 
-const SESSION_PRUNE_THRESHOLD = 500;
-const SESSION_KEEP_NEWEST = 100;
-
-async function purgeSession(sessionDir = sessionFolder, cleanPreKeys = false, maxPreKeyAgeDays = 7) {
+async function purgeSession(sessionDir, cleanPreKeys = false, maxPreKeyAgeDays = 7) {
   try {
     await fsp.access(sessionDir);
   } catch {
@@ -157,14 +153,6 @@ async function purgeSession(sessionDir = sessionFolder, cleanPreKeys = false, ma
   } catch {
     return;
   }
-
-  const prunable = files.filter(f =>
-    f.startsWith('pre-key-') ||
-    f.startsWith('sender-key-') ||
-    f.startsWith('session-')
-  );
-
-  console.log(chalk.gray(`[purgeSession] File totali: ${files.length} | Prunable: ${prunable.length} | Soglia: ${SESSION_PRUNE_THRESHOLD}`));
 
   await Promise.all(files.map(async (file) => {
     if (file === 'creds.json') return;
@@ -190,45 +178,12 @@ async function purgeSession(sessionDir = sessionFolder, cleanPreKeys = false, ma
         await fsp.unlink(filePath);
       }
     } catch {
-      
+      // ignore failures
     }
   }));
-
-
-  if (prunable.length <= SESSION_PRUNE_THRESHOLD) return;
-
-  const sorted = (await Promise.all(prunable.map(async (name) => {
-    try {
-      const st = await fsp.stat(path.join(sessionDir, name));
-      return { name, mtime: st.mtimeMs };
-    } catch {
-      return null;
-    }
-  }))).filter(Boolean).sort((a, b) => a.mtime - b.mtime);
-
-  const toDelete = sorted.slice(0, sorted.length - SESSION_KEEP_NEWEST);
-
-  await Promise.all(toDelete.map(async ({ name }) => {
-    try { await fsp.unlink(path.join(sessionDir, name)); } catch {}
-  }));
-
-  console.log(chalk.blueBright(`\n╭─────────────────···\n│ 𝐀𝐔𝐓𝐎 𝐄𝐋𝐈𝐌𝐈𝐍𝐀𝐙𝐈𝐎𝐍𝐄 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐈\n│ ⓘ 𝐄𝐥𝐢𝐦𝐢𝐧𝐚𝐭𝐢 ${toDelete.length} 𝐟𝐢𝐥𝐞 𝐝𝐢 𝐬𝐞𝐬𝐬𝐢𝐨𝐧𝐞.\n│ ⓘ 𝐀𝐫𝐜𝐡𝐢𝐯𝐢 𝐞𝐥𝐢𝐦𝐢𝐧𝐚𝐭𝐢 𝐜𝐨𝐧 𝐬𝐮𝐜𝐜𝐞𝐬𝐬𝐨. ✅\n╰─────────────···`));
 }
 
 global.dbDirty = false;
-
-const { flushAfk } = await import('./lib/afk.js');
-
-process.on('exit', () => { try { flushAfk() } catch {} });
-process.on('SIGINT', () => { try { flushAfk() } catch {} });
-process.on('SIGTERM', () => { try { flushAfk() } catch {} });
-
-persistentState.setInterval?.(async () => {
-  try {
-    await persistentState.flush()
-  } catch {}
-}, 30000)?.unref?.();
-
 global.markDbDirty = function markDbDirty() {
   global.dbDirty = true;
 };
@@ -263,7 +218,7 @@ async function flushDatabase({ force = false } = {}) {
   }
 }
 
-const { useMultiFileAuthState, fetchLatestBaileysVersion, fetchLatestWaWebVersion, makeCacheableSignalKeyStore, Browsers, jidNormalizedUser, DisconnectReason } = await import('@888-BOT/888baileys');
+const { useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers, jidNormalizedUser, DisconnectReason } = await import('@realvare/baileys');
 const { chain } = lodash;
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3000;
 protoType();
@@ -369,18 +324,7 @@ global.creds = 'creds.json';
 const { state, saveCreds } = await useMultiFileAuthState(global.authFile);
 const msgRetryCounterMap = (MessageRetryMap) => { };
 const msgRetryCounterCache = new NodeCache();
-
-let version;
-try {
-  const waWeb = await fetchLatestWaWebVersion();
-  version = waWeb.version;
-  console.log(chalk.green(`✅ Versione WhatsApp Web: ${version.join('.')}`));
-} catch {
-  const baileys = await fetchLatestBaileysVersion();
-  version = baileys.version;
-  console.log(chalk.yellow(`⚠️ Fallback versione Baileys: ${version.join('.')}`));
-}
-
+const { version } = await fetchLatestBaileysVersion();
 let rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
 
 const question = (t) => {
@@ -595,7 +539,7 @@ if (global.db) setInterval(async () => {
   if (global.db.data) await flushDatabase({ force: true }).catch(console.error);
 }, 5 * 60 * 1000);
 
-
+if (opts['server']) (await import('./server.js')).default(global.conn, PORT);
 
 async function connectionUpdate(update) {
   const { connection, lastDisconnect, isNewLogin, qr } = update;
@@ -664,36 +608,7 @@ async function connectionUpdate(update) {
   }
 }
 
-process.on('uncaughtException', (err) => {
-  
-  if (err.code === 'ERR_IPC_CHANNEL_CLOSED') return;
-  if (err?.output?.statusCode === 408 || err?.message?.includes('Timed Out')) {
-    console.log(chalk.yellow('[⚠️] Timeout di connessione rilevato, il bot continua a funzionare.'));
-    return;
-  }
-  console.error(chalk.red('[❌] Eccezione non gestita:'), err);
-});
-
-
-process.on('unhandledRejection', (reason, promise) => {
-  
-  if (reason?.code === 'ERR_IPC_CHANNEL_CLOSED') return;
-
-  
-  if (reason?.output?.statusCode === 408 || reason?.message?.includes('Timed Out')) {
-    console.log(chalk.yellow('[⚠] Timeout WhatsApp rilevato, riconnessione automatica in corso...'));
-    return;
-  }
-
-  
-  if (reason?.isBoom || reason?.message?.includes('connection')) {
-    console.log(chalk.yellow('[⚠] Errore di connessione rilevato, il bot continua a funzionare.'));
-    return;
-  }
-
-  const errorMsg = reason instanceof Error ? reason.message : reason;
-  console.log(chalk.yellow('[⚠] Promise rejection gestita:'), errorMsg);
-});
+process.on('uncaughtException', console.error);
 
 let isInit = true;
 let handler = await import('./handler.js').catch(e => {
@@ -708,18 +623,18 @@ global.reloadHandler = async function (restatConn) {
       console.error('❌ ERRORE IMPORT HANDLER.JS:', e || 'Unknown error')
       return null
     })
-
+    
     const Handler = loaded?.default || loaded
     if (!Handler) {
       console.error('❌ Handler è null, import fallito')
       return false
     }
-
+    
     if (typeof Handler.handler !== 'function') {
       console.error('❌ Handler.handler è undefined o non è una funzione! Keys disponibili:', Object.keys(Handler))
       return false
     }
-
+    
     handler = Handler
   } catch (e) { 
     console.error('❌ ERRORE in reloadHandler:', e || 'Unknown error')
@@ -852,7 +767,7 @@ global.reload = async (_ev, filename) => {
     return;
   }
 
-  const err = syntaxerror(source, pluginKey, { sourceType: 'module', allowAwaitOutsideFunction: true, ecmaVersion: 12 });
+  const err = syntaxerror(source, pluginKey, { sourceType: 'module', allowAwaitOutsideFunction: true });
   if (err) conn.logger.error(`❌ ERRORE SINTASSI: '${pluginKey}'\n${format(err)}`);
   else {
     try {
@@ -874,38 +789,44 @@ if (!handlerLoaded) {
   process.exit(1);
 }
 
+async function clearDirectory(dirPath) {
+  try {
+    await ensureDir(dirPath);
+  } catch (e) {
+    console.error(chalk.red(`Errore creazione ${dirPath}:`, e));
+    return;
+  }
+
+  let entries;
+  try {
+    entries = await fsp.readdir(dirPath);
+  } catch (e) {
+    return;
+  }
+
+  await Promise.all(entries.map(async (file) => {
+    const filePath = join(dirPath, file);
+    try {
+      const stats = await fsp.stat(filePath);
+      if (stats.isFile()) await fsp.unlink(filePath);
+      else if (stats.isDirectory()) await fsp.rm(filePath, { recursive: true, force: true });
+    } catch (e) {
+      console.error(chalk.red(`Errore pulizia ${filePath}:`, e));
+    }
+  }));
+}
+
+function ripristinaTimer(conn) {
+  if (conn.timerReset) clearInterval(conn.timerReset);
+  conn.timerReset = setInterval(async () => {
+    if (stopped === 'close' || !conn || !conn.user) return;
+    await clearDirectory(join(__dirname, 'tmp'));
+    await clearDirectory(join(__dirname, 'temp'));
+  }, 1000 * 60 * 30);
+}
+
 let filePath = fileURLToPath(import.meta.url);
 const mainWatcher = watch(filePath, async () => {
   await global.reloadHandler(true).catch(console.error);
 });
 mainWatcher.setMaxListeners(20);
-
-setInterval(async () => {
-  try {
-    if (global.stopped !== 'open' || !global.conn || !global.conn.user) {
-      console.log(chalk.gray(`[AUTOCLEARTMP] skip (stopped=${global.stopped}, user=${!!global.conn?.user})`));
-      return;
-    }
-    await clearDirectoryAsync(tmpDir);
-    await clearDirectoryAsync(tempDir);
-    console.log(chalk.blueBright(`\n╭─────────────────···\n│ 𝐀𝐔𝐓𝐎𝐂𝐋𝐄𝐀𝐑𝐓𝐌𝐏\n│ ⓘ 𝐀𝐫𝐜𝐡𝐢𝐯𝐢 𝐞𝐥𝐢𝐦𝐢𝐧𝐚𝐭𝐢 𝐜𝐨𝐧 𝐬𝐮𝐜𝐜𝐞𝐬𝐬𝐨. ✅\n╰─────────────···`));
-  } catch (e) {
-    console.error(chalk.red('[AUTOCLEARTMP] errore:'), e);
-  }
-}, 180000);
-
-setInterval(async () => {
-  try {
-    if (global.stopped !== 'open' || !global.conn || !global.conn.user) {
-      console.log(chalk.gray(`[SESSION-CLEANUP] skip (stopped=${global.stopped}, user=${!!global.conn?.user})`));
-      return;
-    }
-    await runSessionCleanup(async () => {
-      await purgeSession(sessionFolder);
-      await clearSessionFolderSelective(sessionFolder);
-    });
-    console.log(chalk.blueBright(`\n╭─────────────────···\n│ 𝐀𝐔𝐓𝐎 𝐂𝐎𝐍𝐓𝐑𝐎𝐋𝐋𝐎 𝐒𝐄𝐒𝐒𝐈𝐎𝐍𝐈\n│ ⓘ 𝐂𝐨𝐧𝐭𝐫𝐨𝐥𝐥𝐨 𝐞𝐟𝐟𝐞𝐭𝐭𝐮𝐚𝐭𝐨 ✅\n╰─────────────···`));
-  } catch (e) {
-    console.error(chalk.red('[SESSION-CLEANUP] errore:'), e);
-  }
-}, 1000 * 60 * 10);
